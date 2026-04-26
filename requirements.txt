@@ -1,0 +1,9 @@
+# Python 3.10+. Register agent name in LiveKit as invetflow-agent (see README).
+livekit-agents~=1.4
+livekit-plugins-openai
+livekit-plugins-deepgram
+livekit-plugins-cartesia
+livekit-plugins-silero
+livekit-plugins-noise-cancellation~=0.2
+httpx~=0.28
+python-dotenv~=1.0
