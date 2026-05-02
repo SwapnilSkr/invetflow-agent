@@ -350,7 +350,7 @@ def _build_room_options() -> room_io.RoomOptions:
 async def _fetch_context(session_id: str, secret: str) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(
-            f"{_api_base()}/api/agent/sessions/{session_id}/context",
+            f"{_api_base()}/api/agent/interviews/{session_id}/context",
             headers={"X-Invetflow-Agent-Secret": secret},
         )
         r.raise_for_status()
@@ -364,7 +364,7 @@ async def _start_candidate_audio_egress(session_id: str, secret: str, track_id: 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             r = await client.post(
-                f"{_api_base()}/api/agent/sessions/{session_id}/candidate-audio-egress",
+                f"{_api_base()}/api/agent/interviews/{session_id}/candidate-audio-egress",
                 headers={"X-Invetflow-Agent-Secret": secret, "Content-Type": "application/json"},
                 json={"trackId": track_id},
             )
@@ -405,7 +405,7 @@ async def _request_batch_transcript_refinement(session_id: str, secret: str) -> 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(
-                f"{_api_base()}/api/agent/sessions/{session_id}/refine-transcript",
+                f"{_api_base()}/api/agent/interviews/{session_id}/refine-transcript",
                 headers={"X-Invetflow-Agent-Secret": secret},
             )
         if not r.is_success:
@@ -428,7 +428,7 @@ async def _append_transcript(
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(
-                f"{_api_base()}/api/agent/sessions/{session_id}/transcript",
+                f"{_api_base()}/api/agent/interviews/{session_id}/transcript",
                 headers={"X-Invetflow-Agent-Secret": secret, "Content-Type": "application/json"},
                 json=body,
             )
@@ -491,11 +491,16 @@ async def entrypoint(ctx: JobContext) -> None:
         except json.JSONDecodeError:
             logger.warning("job metadata is not valid JSON: %s", raw[:200])
 
-    session_id = (meta.get("sessionId") or meta.get("session_id") or "").strip()
+    session_id = (
+        meta.get("interviewId")
+        or meta.get("sessionId")
+        or meta.get("session_id")
+        or ""
+    ).strip()
     if not session_id:
         raise RuntimeError(
-            "Missing sessionId in job metadata. The Invetflow server should dispatch with "
-            'JSON: {"sessionId":"...","interviewId":"..."}'
+            "Missing interviewId in job metadata. The Invetflow server should dispatch with "
+            'JSON: {"interviewId":"...","jobId":"..."}'
         )
 
     secret = _require_secret()

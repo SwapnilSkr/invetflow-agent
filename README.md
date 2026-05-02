@@ -62,7 +62,7 @@ For production, follow [LiveKit agent deployment](https://docs.livekit.io/agents
 
 ## How it ties to the stack
 
-1. Candidate **joins** an interview → server creates a LiveKit room and **CreateDispatch** for `LIVEKIT_AGENT_NAME` with JSON metadata: `sessionId`, `interviewId`.
-2. This worker receives the job, fetches `GET /api/agent/sessions/{id}/context`, starts a voice `AgentSession`, and posts transcript lines to `POST /api/agent/sessions/{id}/transcript`.
-3. When the remote candidate publishes a **microphone** audio track, the agent calls `POST /api/agent/sessions/{id}/candidate-audio-egress` so the server starts **LiveKit Track Egress** to S3 (configure `AWS_*` and `S3_BUCKET` on **invetflow-server**).
-4. On job shutdown, the agent calls `POST /api/agent/sessions/{id}/refine-transcript`. The server downloads the object from S3 and runs **non-realtime** `gpt-4o-transcribe`, then merges the result into Mongo (AI/System lines preserved; live **Candidate** lines replaced by one refined block). The same refinement is also queued when the candidate ends the session from the app.
+1. Candidate **joins** an interview → server creates a LiveKit room and **CreateDispatch** for `LIVEKIT_AGENT_NAME` with JSON metadata: `interviewId` (and legacy `sessionId`).
+2. This worker receives the job, fetches `GET /api/agent/interviews/{id}/context`, starts a voice `AgentSession`, and posts transcript lines to `POST /api/agent/interviews/{id}/transcript`.
+3. When the remote candidate publishes a **microphone** audio track, the agent calls `POST /api/agent/interviews/{id}/candidate-audio-egress` so the server starts **LiveKit Track Egress** to S3 (configure `AWS_*` and `S3_BUCKET` on **invetflow-server**).
+4. On job shutdown, the agent calls `POST /api/agent/interviews/{id}/refine-transcript`. The server downloads the object from S3 and runs **non-realtime** `gpt-4o-transcribe`, then merges the result into Mongo (AI/System lines preserved; live **Candidate** lines replaced by one refined block). The same refinement is also queued when the candidate ends the session from the app.
