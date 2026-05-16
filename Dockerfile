@@ -80,6 +80,6 @@ ENV PATH="/app/.venv/bin:$PATH"
 # This improves security by not running as root
 USER appuser
 
-# Run the application
-# The "start" command tells the worker to connect to LiveKit and begin waiting for jobs.
+# Run the voice-interview worker by default. Use
+# `python meeting_agent.py start` for the human-meeting transcription worker.
 CMD ["python", "main.py", "start"]
