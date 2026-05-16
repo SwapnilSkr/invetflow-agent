@@ -60,7 +60,61 @@ A `.venv-agent` folder at the **repo root** was a one-off test environment and i
 
 For production, follow [LiveKit agent deployment](https://docs.livekit.io/agents/ops/deployment/) (same env vars, command is typically `python main.py start`).
 
-## How it ties to the stack
+## Meeting Agent (`meeting_agent.py`)
+
+A second worker in this repo handles **human-meeting transcription** for the Human Video Interview feature. It joins recruiter-scheduled rooms, transcribes all participants via Deepgram nova-3, and streams live captions to the recruiter UI over a LiveKit DataChannel.
+
+### Prerequisites
+
+- **`DEEPGRAM_API_KEY`** — required (not optional). The meeting agent uses Deepgram exclusively for STT.
+- `MEETING_AGENT_NAME` — must match `livekit_meeting_agent_name` in `invetflow-server` config. Default is `invetflow-meeting-agent`.
+- `INVETFLOW_API_BASE` or `INVETFLOW_API_URL` — base URL of `invetflow-server`.
+- `AGENT_API_SECRET` — same shared secret as the AI interview agent.
+
+### Run (development)
+
+The meeting agent connects to LiveKit Cloud from your local machine — no deployment needed for development. When the Rust server dispatches for `invetflow-meeting-agent`, LiveKit routes the job to your local process.
+
+```bash
+# In a second terminal alongside main.py dev
+cd invetflow-agent
+source .venv/bin/activate
+python meeting_agent.py dev
+```
+
+Watch for `registered agent: invetflow-meeting-agent` in the logs. Then start a Human Interview session from the recruiter app — the agent should join the room and begin transcribing.
+
+### Production deployment
+
+Run `meeting_agent.py` as a **separate container / service** from `main.py` (Option A — recommended for independent scaling and restart policies):
+
+```bash
+docker run -d \
+  --name invetflow-meeting-agent \
+  --restart unless-stopped \
+  -e LIVEKIT_URL=wss://your-project.livekit.cloud \
+  -e LIVEKIT_API_KEY=xxx \
+  -e LIVEKIT_API_SECRET=xxx \
+  -e DEEPGRAM_API_KEY=xxx \
+  -e AGENT_API_SECRET=xxx \
+  -e INVETFLOW_API_BASE=https://api.invetflow.com \
+  -e MEETING_AGENT_NAME=invetflow-meeting-agent \
+  invetflow-agent \
+  python meeting_agent.py start
+```
+
+The default `CMD` in the Dockerfile runs `main.py start` (AI interview agent). Override with `python meeting_agent.py start` when running the meeting agent — this does **not** affect the existing AI interview agent container.
+
+### How it ties to the stack
+
+1. Recruiter clicks **Start session** → server calls `create_agent_dispatch("meet-<oid>", "invetflow-meeting-agent", metadata)`.
+2. LiveKit Cloud routes the dispatch to the connected meeting-agent worker.
+3. Agent joins the room, subscribes to all participant audio, skips its own `agent-` track.
+4. Finals are `POST`ed to `POST /api/agent/human-interviews/transcript` with `X-Invetflow-Agent-Secret`.
+5. Live (interim) turns are broadcast over `DataChannel` topic `invetflow-meeting-transcript` — the recruiter UI renders them immediately.
+6. On room close, the server transitions `transcript_status` to `Complete` and runs GPT-4o-mini summarization in the background.
+
+## How it ties to the stack (AI interview agent)
 
 1. Candidate **joins** an interview → server creates a LiveKit room and **CreateDispatch** for `LIVEKIT_AGENT_NAME` with JSON metadata: `interviewId` (and legacy `sessionId`).
 2. This worker receives the job, fetches `GET /api/agent/interviews/{id}/context`, starts a voice `AgentSession`, and posts transcript lines to `POST /api/agent/interviews/{id}/transcript`.
