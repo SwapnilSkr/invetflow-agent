@@ -110,7 +110,7 @@ The default `CMD` in the Dockerfile runs `main.py start` (AI interview agent). O
 1. Recruiter clicks **Start session** → server calls `create_agent_dispatch("meet-<oid>", "invetflow-meeting-agent", metadata)`.
 2. LiveKit Cloud routes the dispatch to the connected meeting-agent worker.
 3. Agent joins the room, subscribes to all participant audio, skips its own `agent-` track.
-4. Finals are `POST`ed to `POST /api/agent/human-interviews/transcript` with `X-Invetflow-Agent-Secret`.
+4. Finals are `POST`ed to `POST /api/agent/meetings/{humanInterviewId}/transcript` with `X-Invetflow-Agent-Secret`.
 5. Live (interim) turns are broadcast over `DataChannel` topic `invetflow-meeting-transcript` — the recruiter UI renders them immediately.
 6. On room close, the server transitions `transcript_status` to `Complete` and runs GPT-4o-mini summarization in the background.
 
