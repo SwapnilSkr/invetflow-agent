@@ -48,6 +48,7 @@ DEFAULT_STT_MODEL = "gpt-4o-transcribe"
 DEFAULT_STT_REALTIME = True
 DEFAULT_LLM_MODEL = "gpt-4o-mini"
 DEFAULT_TTS_PROVIDER = "openai"
+AI_STATE_TOPIC = "invetflow-ai-state"
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -438,7 +439,25 @@ async def _append_transcript(
         logger.warning("append_transcript error: %s", e)
 
 
-def _register_transcript_handlers(session: AgentSession, session_id: str, secret: str) -> None:
+async def _publish_agent_state(room: rtc.Room, state: str) -> None:
+    if state not in {"idle", "listening", "thinking"}:
+        return
+    try:
+        await room.local_participant.publish_data(
+            json.dumps({"type": "ai_state", "state": state}).encode("utf-8"),
+            reliable=True,
+            topic=AI_STATE_TOPIC,
+        )
+    except Exception as e:
+        logger.debug("publish agent state failed during room lifecycle: %s", e)
+
+
+def _register_transcript_handlers(
+    session: AgentSession,
+    room: rtc.Room,
+    session_id: str,
+    secret: str,
+) -> None:
     def schedule(coro: Any) -> None:
         try:
             asyncio.get_running_loop().create_task(coro)
@@ -447,16 +466,25 @@ def _register_transcript_handlers(session: AgentSession, session_id: str, secret
 
     @session.on("user_input_transcribed")
     def _on_user(ev: UserInputTranscribedEvent) -> None:
-        if not ev.is_final or not (ev.transcript or "").strip():
+        transcript = (ev.transcript or "").strip()
+        if transcript:
+            schedule(_publish_agent_state(room, "thinking" if ev.is_final else "listening"))
+        if not ev.is_final or not transcript:
             return
         schedule(
             _append_transcript(
                 session_id,
                 secret,
                 speaker="Candidate",
-                content=ev.transcript.strip(),
+                content=transcript,
             )
         )
+
+    @session.on("agent_state_changed")
+    def _on_agent_state(state: Any) -> None:
+        value = getattr(state, "state", state)
+        if isinstance(value, str):
+            schedule(_publish_agent_state(room, value))
 
     @session.on("conversation_item_added")
     def _on_item(ev: ConversationItemAddedEvent) -> None:
@@ -476,6 +504,7 @@ def _register_transcript_handlers(session: AgentSession, session_id: str, secret
                 content=text.strip(),
             )
         )
+        schedule(_publish_agent_state(room, "idle"))
 
 
 server = AgentServer()
@@ -557,7 +586,7 @@ async def entrypoint(ctx: JobContext) -> None:
         min_interruption_duration=_env_float("AGENT_MIN_INTERRUPTION_DURATION", 0.75),
         min_interruption_words=int(_env_float("AGENT_MIN_INTERRUPTION_WORDS", 2)),
     )
-    _register_transcript_handlers(session, session_id, secret)
+    _register_transcript_handlers(session, ctx.room, session_id, secret)
     _register_candidate_mic_egress(ctx.room, session_id, secret)
 
     async def _on_job_shutdown(_reason: str) -> None:
